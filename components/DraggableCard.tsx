@@ -13,8 +13,6 @@ interface DraggableCardProps {
   containerRef: RefObject<HTMLDivElement | null>;
   removeComponent: (id: string | number) => void;
   index?: number;
-  /** When true, no drag constraints (infinite canvas). */
-  infinite?: boolean;
 }
 
 function useOnClickOutside<T extends HTMLElement>(
@@ -43,7 +41,6 @@ export default function DraggableCard({
   containerRef,
   removeComponent,
   index = 0,
-  infinite = false,
 }: DraggableCardProps) {
   const [isActive, setIsActive] = useState<boolean>(false);
   const cardRef = useRef<HTMLDivElement>(null);
@@ -52,21 +49,24 @@ export default function DraggableCard({
 
   const layoutIndex = typeof card.id === "number" ? card.id : index;
 
+  // On infinite canvas: position in center region so they're visible on first load
+  const initialPos = {
+    top: `${40 + (layoutIndex % 3) * 8}%`,
+    left: `${35 + (layoutIndex % 3) * 15}%`,
+    rotate: layoutIndex % 2 === 0 ? "-3deg" : "3deg",
+  }
+
   return (
     <motion.div
       ref={cardRef}
       drag
-      dragConstraints={infinite ? false : containerRef}
+      dragConstraints={containerRef}
       dragMomentum={false}
       onClick={(e) => {
         e.stopPropagation();
         setIsActive(true);
       }}
-      initial={{
-        top: layoutIndex % 2 === 0 ? "20%" : "40%",
-        left: layoutIndex % 2 === 0 ? "20%" : "60%",
-        rotate: layoutIndex % 2 === 0 ? "-3deg" : "3deg",
-      }}
+      initial={initialPos}
       whileDrag={{
         scale: 1.05,
         zIndex: 50,
@@ -87,11 +87,13 @@ export default function DraggableCard({
       <AnimatePresence>
         {isActive && (
           <motion.button
+            type="button"
             key="close-btn"
             initial={{ opacity: 0, scale: 0.8, y: 10 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.8, y: 10 }}
             transition={{ duration: 0.3 }}
+            onPointerDown={(e) => e.stopPropagation()}
             onClick={(e) => {
               e.stopPropagation();
               removeComponent(card.id);

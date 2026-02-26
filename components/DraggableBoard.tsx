@@ -1,4 +1,4 @@
-import React, { useRef, useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import { cn } from '@/lib/utils'
 import { LuMaximize } from "react-icons/lu";
 import { GoPlus } from 'react-icons/go';
@@ -6,10 +6,19 @@ import NoteCard from './NoteCard';
 import ToDoCard from './ToDoCard';
 import ImageCard from './ImageCard';
 import {motion} from 'framer-motion';
-import InfiniteCanvas from './InfiniteCanvas';
 import DraggableCard from './DraggableCard';
 
 type Variant = 'embedded' | 'fullscreen';
+
+type CardItem = { id: number; component: React.ReactNode };
+
+let nextCardId = 0;
+function makeCard(type: 'note' | 'todo' | 'image'): CardItem {
+  const id = nextCardId++;
+  const component =
+    type === 'note' ? <NoteCard key={id} /> : type === 'todo' ? <ToDoCard key={id} /> : <ImageCard key={id} />;
+  return { id, component };
+}
 
 export default function DraggableBoard({
   variant: variantProp,
@@ -23,33 +32,46 @@ export default function DraggableBoard({
   const variant = setVariantProp ? variantProp ?? internalVariant : internalVariant;
   const setVariant = setVariantProp ?? setInternalVariant;
 
-  const [components, setComponents] = useState<React.ReactNode[]>([
-    <NoteCard key='note' />,
-    <ToDoCard key='todo' />,
-    <ImageCard key='image' />
+  const [cards, setCards] = useState<CardItem[]>(() => [
+    makeCard('note'),
+    makeCard('todo'),
+    makeCard('image'),
   ]);
 
   const addComponent = (component: 'note' | 'todo' | 'image') => {
-    console.log(component);
-    if (component === 'note') {
-      setComponents([...components, <NoteCard key='note' />]);
-    } else if (component === 'todo') {
-      setComponents([...components, <ToDoCard key='todo' />]);
-    } else if (component === 'image') {
-      setComponents([...components, <ImageCard key='image' />]);
-    }
-  }
+    setCards((prev) => [...prev, makeCard(component)]);
+  };
 
-  const removeComponent = (component: 'note' | 'todo' | 'image') => {
-    console.log(component);
-    if (component === 'note') {
-      setComponents(components.filter((_, index) => index !== components.indexOf(<NoteCard key='note' />)));
-    } else if (component === 'todo') {
-      setComponents(components.filter((_, index) => index !== components.indexOf(<ToDoCard key='todo' />)));
-    } else if (component === 'image') {
-      setComponents(components.filter((_, index) => index !== components.indexOf(<ImageCard key='image' />)));
-    }
-  }
+  const removeComponent = (id: string | number) => {
+    const numId = typeof id === 'string' ? parseInt(id, 10) : id;
+    if (Number.isNaN(numId)) return;
+    setCards((prev) => prev.filter((c) => c.id !== numId));
+  };
+
+  const canvasRef = useRef<HTMLDivElement>(null);
+
+  // Canvas size so we can center the view with equal room to scroll in all directions
+  const CANVAS_WIDTH = 8000;
+  const CANVAS_HEIGHT = 5000;
+
+  const centerScroll = () => {
+    const scrollable = containerRef.current;
+    if (!scrollable) return;
+    const maxScrollX = Math.max(0, CANVAS_WIDTH - scrollable.clientWidth);
+    const maxScrollY = Math.max(0, CANVAS_HEIGHT - scrollable.clientHeight);
+    scrollable.scrollLeft = maxScrollX / 2;
+    scrollable.scrollTop = maxScrollY / 2;
+  };
+
+  // Start view from center so there's room for left/right and up/down scroll
+  useEffect(() => {
+    centerScroll();
+    // Run again after layout (e.g. after variant animates or fonts load)
+    const t = requestAnimationFrame(() => {
+      requestAnimationFrame(centerScroll);
+    });
+    return () => cancelAnimationFrame(t);
+  }, [variant]);
 
   return (
     <motion.div 
@@ -58,7 +80,7 @@ export default function DraggableBoard({
       animate={{height: variant === 'embedded' ? 400 : '100%'}} 
       transition={{type: 'spring', stiffness: 300, damping: 20, mass: 0.8, duration: 0.3}} 
       className={cn(
-        'w-full rounded-3xl border-3 border-[#FFE66E] bg-white overflow-hidden relative', 
+        'w-full rounded-3xl border-3 border-[#FFE66E] bg-white overflow-auto relative hidden-scroll', 
         variant === 'embedded' ? 'w-full h-[400px]' : 'w-full h-full'
       )}
     >
@@ -88,19 +110,31 @@ export default function DraggableBoard({
         <LuMaximize color='#2E2E2E' size={24} />
         </button>
       </div>
-      <motion.div className='w-full h-full flex flex-wrap gap-4 p-4'>
-        <InfiniteCanvas className='w-full h-full flex flex-wrap gap-4 p-4 cursor-grab active:cursor-grabbing'>
-          {components.map((component, index) => (
-            <DraggableCard 
-              key={index} 
-              card={{id: index, component: component}} 
-              containerRef={containerRef} 
-              removeComponent={(id: string | number) => removeComponent(id as 'note' | 'todo' | 'image')} 
-              index={index} 
-              infinite={true} 
+      <motion.div
+        ref={canvasRef}
+        className='relative cursor-grab active:cursor-grabbing'
+        style={{
+          width: CANVAS_WIDTH,
+          height: CANVAS_HEIGHT,
+          backgroundColor: '#FFFFFF',
+          backgroundRepeat: 'repeat',
+          backgroundSize: '40px 40px',
+          backgroundPosition: 'center',
+          backgroundImage: 'radial-gradient(#FFE66E 2px, transparent 0)',
+        }}
+        drag
+        dragConstraints={containerRef}
+        dragMomentum={false}
+      >
+          {cards.map((card, index) => (
+            <DraggableCard
+              key={card.id}
+              card={{ id: card.id, component: card.component }}
+              containerRef={containerRef}
+              removeComponent={removeComponent}
+              index={index}
             />
           ))}
-        </InfiniteCanvas>
       </motion.div>
     </motion.div>
   );
